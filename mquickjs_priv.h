@@ -375,4 +375,20 @@ JSValue js_regexp_get_flags(JSContext *ctx, JSValue *this_val,
 JSValue js_regexp_exec(JSContext *ctx, JSValue *this_val,
                        int argc, JSValue *argv, int is_test);
 
+/* Execute regex from raw bytecode
+ * bytecode: pre-compiled regex bytecode
+ * bytecode_len: length of bytecode
+ * input: input string to match against
+ * input_len: length of input string
+ * start_index: starting position for match
+ * captures: array to receive capture positions (2 * capture_count uint32_t values)
+ * captures_size: size of captures array
+ * Returns: 1 if match found, 0 if no match, -1 on error
+ */
+int js_lre_exec_bytecode(JSContext *ctx,
+                         const uint8_t *bytecode, size_t bytecode_len,
+                         const uint8_t *input, size_t input_len,
+                         int start_index,
+                         uint32_t *captures, size_t captures_size);
+
 #endif /* MICROJS_PRIV_H */

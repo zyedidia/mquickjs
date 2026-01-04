@@ -17488,10 +17488,77 @@ static int lre_exec(JSContext *ctx, JSValue capture_buf,
         default:
 #ifdef DUMP_REEXEC
             printf("unknown opcode pc=%ld\n", pc - 1 - ((JSByteArray *)JS_VALUE_TO_PTR(byte_code))->buf - RE_HEADER_LEN);
-#endif            
+#endif
             abort();
         }
     }
+}
+
+/* Public wrapper for lre_exec that takes raw bytecode and input buffers.
+ * Returns: 1 if match found, 0 if no match, -1 on error */
+int js_lre_exec_bytecode(JSContext *ctx,
+                         const uint8_t *bytecode, size_t bytecode_len,
+                         const uint8_t *input, size_t input_len,
+                         int start_index,
+                         uint32_t *captures, size_t captures_size)
+{
+    if (bytecode_len < RE_HEADER_LEN)
+        return -1;
+
+    int capture_count = lre_get_capture_count(bytecode);
+    int alloc_count = lre_get_alloc_count(bytecode);
+
+    if (captures_size < (size_t)(alloc_count * sizeof(uint32_t)))
+        return -1;
+
+    /* Initialize captures to -1 */
+    for (int i = 0; i < 2 * capture_count; i++) {
+        captures[i] = (uint32_t)-1;
+    }
+
+    /* Create JSByteArray for bytecode */
+    JSByteArray *bc_arr = js_malloc(ctx, sizeof(JSByteArray) + bytecode_len, JS_MTAG_BYTE_ARRAY);
+    if (!bc_arr)
+        return -1;
+    bc_arr->size = bytecode_len;
+    memcpy(bc_arr->buf, bytecode, bytecode_len);
+    JSValue bc_val = JS_VALUE_FROM_PTR(bc_arr);
+
+    /* Create JSByteArray for capture buffer */
+    JSByteArray *cap_arr = js_malloc(ctx, sizeof(JSByteArray) + alloc_count * sizeof(uint32_t), JS_MTAG_BYTE_ARRAY);
+    if (!cap_arr) {
+        js_free(ctx, bc_arr);
+        return -1;
+    }
+    cap_arr->size = alloc_count * sizeof(uint32_t);
+    memcpy(cap_arr->buf, captures, alloc_count * sizeof(uint32_t));
+    JSValue cap_val = JS_VALUE_FROM_PTR(cap_arr);
+
+    /* Create JSString for input */
+    JSString *str = js_malloc(ctx, sizeof(JSString) + input_len, JS_MTAG_STRING);
+    if (!str) {
+        js_free(ctx, bc_arr);
+        js_free(ctx, cap_arr);
+        return -1;
+    }
+    str->len = input_len;
+    memcpy(str->buf, input, input_len);
+    JSValue str_val = JS_VALUE_FROM_PTR(str);
+
+    /* Execute regex */
+    int rc = lre_exec(ctx, cap_val, bc_val, str_val, start_index);
+
+    /* Copy capture results back */
+    if (rc == 1) {
+        memcpy(captures, cap_arr->buf, 2 * capture_count * sizeof(uint32_t));
+    }
+
+    /* Cleanup */
+    js_free(ctx, bc_arr);
+    js_free(ctx, cap_arr);
+    js_free(ctx, str);
+
+    return rc;
 }
 
 /* regexp js interface */
