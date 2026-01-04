@@ -198,6 +198,16 @@ static inline JS_BOOL JS_IsException(JSValue v)
     return v == JS_EXCEPTION;
 }
 
+static inline JS_BOOL JS_IsStringChar(JSValue v)
+{
+    return JS_VALUE_GET_SPECIAL_TAG(v) == JS_TAG_STRING_CHAR;
+}
+
+static inline uint32_t JS_GetStringChar(JSValue v)
+{
+    return JS_VALUE_GET_SPECIAL_VALUE(v);
+}
+
 static inline JSValue JS_NewBool(int val)
 {
     return JS_VALUE_MAKE_SPECIAL(JS_TAG_BOOL, (val != 0));
