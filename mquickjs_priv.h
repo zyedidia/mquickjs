@@ -391,4 +391,13 @@ int js_lre_exec_bytecode(JSContext *ctx,
                          int start_index,
                          uint32_t *captures, size_t captures_size);
 
+/* Compile a regex pattern from strings.
+ * Returns the bytecode length on success, -1 on error.
+ * If out_bytecode is not NULL, the bytecode is copied to it.
+ * If out_bytecode is NULL, only the required size is returned. */
+int js_compile_regexp_bytecode(JSContext *ctx,
+                               const char *pattern, size_t pattern_len,
+                               const char *flags, size_t flags_len,
+                               uint8_t *out_bytecode, size_t out_size);
+
 #endif /* MICROJS_PRIV_H */

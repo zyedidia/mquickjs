@@ -17561,6 +17561,67 @@ int js_lre_exec_bytecode(JSContext *ctx,
     return rc;
 }
 
+/* Forward declaration */
+static JSValue js_compile_regexp(JSContext *ctx, JSValue pattern, JSValue flags);
+
+/* Compile a regex pattern from strings.
+ * Returns the bytecode length on success, -1 on error.
+ * If out_bytecode is not NULL, the bytecode is copied to it (must have at least out_size bytes).
+ * If out_bytecode is NULL, only the required size is returned. */
+int js_compile_regexp_bytecode(JSContext *ctx,
+                               const char *pattern, size_t pattern_len,
+                               const char *flags, size_t flags_len,
+                               uint8_t *out_bytecode, size_t out_size)
+{
+    JSValue pattern_val, flags_val, byte_code;
+    JSByteArray *bc_arr;
+    int result;
+
+    /* Create JSString for pattern */
+    JSString *pstr = js_malloc(ctx, sizeof(JSString) + pattern_len, JS_MTAG_STRING);
+    if (!pstr)
+        return -1;
+    pstr->len = pattern_len;
+    memcpy(pstr->buf, pattern, pattern_len);
+    pattern_val = JS_VALUE_FROM_PTR(pstr);
+
+    /* Create JSString for flags (or undefined if empty) */
+    if (flags && flags_len > 0) {
+        JSString *fstr = js_malloc(ctx, sizeof(JSString) + flags_len, JS_MTAG_STRING);
+        if (!fstr) {
+            js_free(ctx, pstr);
+            return -1;
+        }
+        fstr->len = flags_len;
+        memcpy(fstr->buf, flags, flags_len);
+        flags_val = JS_VALUE_FROM_PTR(fstr);
+    } else {
+        flags_val = JS_UNDEFINED;
+    }
+
+    /* Compile the regex */
+    byte_code = js_compile_regexp(ctx, pattern_val, flags_val);
+
+    /* Cleanup strings */
+    js_free(ctx, pstr);
+    if (!JS_IsUndefined(flags_val))
+        js_free(ctx, JS_VALUE_TO_PTR(flags_val));
+
+    if (JS_IsException(byte_code))
+        return -1;
+
+    /* Extract bytecode */
+    bc_arr = JS_VALUE_TO_PTR(byte_code);
+    result = bc_arr->size;
+
+    if (out_bytecode && out_size >= (size_t)bc_arr->size) {
+        memcpy(out_bytecode, bc_arr->buf, bc_arr->size);
+    }
+
+    js_free(ctx, bc_arr);
+    return result;
+}
+
 /* regexp js interface */
 
 /* return the length */
