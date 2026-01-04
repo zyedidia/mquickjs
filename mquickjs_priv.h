@@ -56,6 +56,116 @@ typedef enum {
 
 #define JS_ROM_VALUE(offset) JS_VALUE_FROM_PTR(&js_stdlib_table[offset])
 
+#define JS_MB_PAD(n)  (JSW * 8 - (n))
+
+/* Memory block header - common to all heap-allocated objects */
+typedef struct {
+    JS_MB_HEADER;
+    JSWord dummy: JS_MB_PAD(JS_MTAG_BITS);
+} JSMemBlockHeader;
+
+/* Free block in the heap */
+typedef struct {
+    JS_MB_HEADER;
+    /* size in JSWords excluding the header */
+    JSWord size: JS_MB_PAD(JS_MTAG_BITS);
+} JSFreeBlock;
+
+/* String object */
+#if JSW == 8
+#define JS_STRING_LEN_MAX 0x7ffffffe
+#else
+#define JS_STRING_LEN_MAX ((1 << (32 - JS_MTAG_BITS - 3)) - 1)
+#endif
+
+typedef struct {
+    JS_MB_HEADER;
+    JSWord is_unique: 1;
+    JSWord is_ascii: 1;
+    /* true if the string content represents a number, only meaningful
+       if is_unique = true */
+    JSWord is_numeric: 1;
+    JSWord len: JS_MB_PAD(JS_MTAG_BITS + 3);
+    uint8_t buf[];
+} JSString;
+
+/* Byte array (used for bytecode, etc.) */
+#define JS_BYTE_ARRAY_SIZE_MAX ((1 << (32 - JS_MTAG_BITS)) - 1)
+
+typedef struct {
+    JS_MB_HEADER;
+    JSWord size: JS_MB_PAD(JS_MTAG_BITS);
+    uint8_t buf[];
+} JSByteArray;
+
+/* Value array (used for constant pools, etc.) */
+#define JS_VALUE_ARRAY_SIZE_MAX ((1 << (32 - JS_MTAG_BITS)) - 1)
+
+typedef struct {
+    JS_MB_HEADER;
+    JSWord size: JS_MB_PAD(JS_MTAG_BITS);
+    JSValue arr[];
+} JSValueArray;
+
+/* Variable reference (for closures) */
+typedef struct JSVarRef {
+    JS_MB_HEADER;
+    JSWord is_detached : 1;
+    JSWord dummy: JS_MB_PAD(JS_MTAG_BITS + 1);
+    union {
+        JSValue value; /* is_detached = true */
+        struct {
+            JSValue next; /* is_detached = false: JS_NULL or JSVarRef,
+                             must be at the same address as 'value' */
+            JSValue *pvalue;
+        };
+    } u;
+} JSVarRef;
+
+/* Float64 object */
+typedef struct {
+    JS_MB_HEADER;
+    JSWord dummy: JS_MB_PAD(JS_MTAG_BITS);
+#ifdef JS_PTR64
+    struct {
+        double dval;
+    } u;
+#else
+    /* unaligned 64 bit access in 32-bit mode */
+    struct __attribute__((packed)) {
+        double dval;
+    } u;
+#endif
+} JSFloat64;
+
+/* Function bytecode object */
+typedef struct JSFunctionBytecode {
+    JS_MB_HEADER;
+    JSWord has_arguments : 1; /* only used during parsing */
+    JSWord has_local_func_name : 1; /* only used during parsing */
+    JSWord has_column : 1; /* column debug info is present */
+    /* during parse: variable index + 1 of hoisted function, 0 otherwise */
+    JSWord arg_count : 16;
+    JSWord dummy: JS_MB_PAD(JS_MTAG_BITS + 3 + 16);
+
+    JSValue func_name; /* JS_NULL if anonymous function */
+    JSValue byte_code; /* JS_NULL if the function is not parsed yet */
+    JSValue cpool; /* constant pool */
+    JSValue vars; /* only for debug */
+    JSValue ext_vars; /* records of (var_name, var_kind (2 bits) var_idx (16 bits)) */
+    uint16_t stack_size; /* maximum stack size */
+    uint16_t ext_vars_len; /* XXX: only used during parsing */
+    JSValue filename; /* filename in which the function is defined */
+    JSValue pc2line; /* JSByteArray or JS_NULL if not initialized */
+    uint32_t source_pos; /* only used during parsing (XXX: shrink) */
+} JSFunctionBytecode;
+
+/* Get the size of a memory block in bytes */
+int js_get_mblock_size(const void *ptr);
+
+/* Relocate bytecode without a context (for tools that only parse bytecode) */
+int js_relocate_bytecode(uint8_t *buf, uint32_t buf_len);
+
 /* runtime helpers */
 JSValue js_function_constructor(JSContext *ctx, JSValue *this_val,
                                 int argc, JSValue *argv);
